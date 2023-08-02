@@ -1,0 +1,4 @@
+SELECT *
+FROM ethereum.creation_traces
+WHERE block_number BETWEEN 12879510 AND 17809510
+AND CAST(code AS VARCHAR) REGEXP "^.*a165767970657283[0-9a-fA-F]{6}.*$";

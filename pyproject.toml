@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "vyper-chain-info"
+version = "0.1.0"
+description = ""
+authors = ["PatrickAlphac <54278053+PatrickAlphaC@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "vyper_chain_info" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+web3 = "^6.7.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
