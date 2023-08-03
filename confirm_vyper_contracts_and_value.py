@@ -1,5 +1,6 @@
 import logging as log
 import os
+import time
 from pathlib import Path
 from typing import List
 
@@ -8,11 +9,8 @@ from web3 import Web3
 
 log.basicConfig(level=log.INFO)
 
-BASE_ETHERSCAN_URL = (
-    "https://api.etherscan.io/api?module=contract&action=getsourcecode&address="
-)
-ETHERSCAN_URL_POSTFIX = "&apikey="
-
+BASE_EXPLORER_URL = "api?module=contract&action=getsourcecode&address="
+EXPLORER_URL_POSTFIX = "&apikey="
 ARB_RPC_URL = os.getenv("ARB_RPC_URL")
 AVA_RPC_URL = os.getenv("AVA_RPC_URL")
 BNB_RPC_URL = os.getenv("BNB_RPC_URL")
@@ -31,9 +29,27 @@ CHAIN_TO_RPC_URL = {
     "polygon": POLYGON_RPC_URL,
 }
 
-ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
-POSSIBLE_VYPER_CONTRACTS_DIR = "./possible_vyper_contracts"
+CHAIN_TO_EXPLORER_URL = {
+    "arb": "https://api.arbiscan.io/" + BASE_EXPLORER_URL,
+    "ava": "https://api.snowtrace.io/" + BASE_EXPLORER_URL,
+    "bnb": "https://api.bscscan.com/" + BASE_EXPLORER_URL,
+    "eth": "https://api.etherscan.io/" + BASE_EXPLORER_URL,
+    "fantom": "https://api.ftmscan.com/" + BASE_EXPLORER_URL,
+    "opt": "https://api-optimistic.etherscan.io/" + BASE_EXPLORER_URL,
+    "polygon": "https://api.polygonscan.com/" + BASE_EXPLORER_URL,
+}
 
+CHAIN_TO_SCANNER_API_KEY = {
+    "arb": os.getenv("ARBITRUMSCAN_API_KEY"),
+    "ava": os.getenv("SNOWTRACE_API_KEY"),
+    "bnb": os.getenv("BSCSCAN_API_KEY"),
+    "eth": os.getenv("ETHERSCAN_API_KEY"),
+    "fantom": os.getenv("FTMSCAN_API_KEY"),
+    "opt": os.getenv("OPTIMISTIC_ETHERSCAN_API_KEY"),
+    "polygon": os.getenv("POLYGONSCAN_API_KEY"),
+}
+
+POSSIBLE_VYPER_CONTRACTS_DIR = "./possible_vyper_contracts"
 VERIFIED_VYPER_CONTRACTS_FILE = "./verified_vyper_contracts.csv"
 
 
@@ -57,6 +73,7 @@ def main():
                 get_verified_vyper_contracts_and_versions_from_csv_path(
                     f"{POSSIBLE_VYPER_CONTRACTS_DIR}/{vyper_version_folder}/",
                     csv_chain_file,
+                    chain,
                 )
             )
 
@@ -121,7 +138,7 @@ def add_native_balance_from_verified_vyper_addresses_to_dict(
 
 
 def get_verified_vyper_contracts_and_versions_from_csv_path(
-    csv_dir_path: str, csv_file_name: str
+    csv_dir_path: str, csv_file_name: str, chain: str
 ) -> dict:
     """
     Gets the verified vyper contracts and their versions from a csv file.
@@ -130,6 +147,7 @@ def get_verified_vyper_contracts_and_versions_from_csv_path(
         dict with key: address
         and values: vyper_version
     """
+    log.info("Loading file from CSV...")
     list_of_addresses: List[str] = read_address_list_from_file(
         csv_dir_path + "/" + csv_file_name
     )
@@ -140,16 +158,20 @@ def get_verified_vyper_contracts_and_versions_from_csv_path(
     verified_vyper_contracts: dict = {}
     for address in list_of_addresses:
         index = index + 1
-        if ((index % 100) == 0) or index is 0:
+        if ((index % 100) == 0) or index == 1:
             log.info(
                 f"Getting verified vyper contracts for address {index} of {number_of_addresses}"
             )
-        url = build_url(address, ETHERSCAN_API_KEY)
+        url = build_scanner_url(address, chain)
         response_json = None
         try:
             response_json = requests.get(url).json()
+            if "rate limit" in response_json["result"]:
+                log.info("Rate limited, sleeping for 6 seconds...")
+                time.sleep(6)
+                response_json = requests.get(url).json()
         except:
-            log.warn(f"Failed to get response from {url}")
+            log.warning(f"Failed to get response from {url}")
         if response_json:
             vyper_version: str = get_vyper_version_from_dict(response_json)
             if vyper_version:
@@ -169,7 +191,12 @@ def get_vyper_version_from_dict(response_json: dict) -> str:
     Returns:
         str: Vyper version, or None
     """
-    compiler_version = response_json.get("result", [{}])[0].get("CompilerVersion", None)
+    try:
+        compiler_version = response_json.get("result", [{}])[0].get(
+            "CompilerVersion", None
+        )
+    except:
+        breakpoint()
     if "vyper" in compiler_version:
         return compiler_version[compiler_version.find(":") + 1 :]
     return None
@@ -187,14 +214,21 @@ def read_address_list_from_file(csv_chain_file: str):
         return [line.strip() for line in file.readlines()]
 
 
-def build_url(address: str, api_key: str):
-    return BASE_ETHERSCAN_URL + address + ETHERSCAN_URL_POSTFIX + api_key
+def build_scanner_url(address: str, chain: str):
+    explorer_url = CHAIN_TO_EXPLORER_URL[chain]
+    api_key = CHAIN_TO_SCANNER_API_KEY[chain]
+    return explorer_url + address + EXPLORER_URL_POSTFIX + api_key
 
 
 # TODO: We could instead get the total estimated TVL of the
 def get_native_balance(chain: str, address: str) -> int:
-    w3 = Web3(Web3.HTTPProvider(CHAIN_TO_RPC_URL[chain]))
-    balance = w3.eth.get_balance(Web3.to_checksum_address(address))
+    rpc_url = CHAIN_TO_RPC_URL[chain]
+    balance = None
+    if rpc_url:
+        w3 = Web3(Web3.HTTPProvider(CHAIN_TO_RPC_URL[chain]))
+        balance = w3.eth.get_balance(Web3.to_checksum_address(address))
+    if not balance:
+        log.warning(f"Failed to get balance for address: {address} on chain {chain}")
     return balance
 
 
