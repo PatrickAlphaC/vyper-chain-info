@@ -4,6 +4,8 @@ A repo to collect data on existing vyper contracts in the ecosystem.
 
 This is meant to be a "sort-of quick" project so it's not perfect.
 
+This README.md is pretty bad too. 
+
 # Strategy
 
 We took the strategy:
@@ -43,7 +45,7 @@ After cloning the repo, run:
 
 ```
 poetry install
-poetry run confirm_vyper_contracts_and_value.py
+poetry run python3 confirm_vyper_contracts_and_value.py
 ```
 
 To get the output again. 
